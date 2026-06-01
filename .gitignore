@@ -1,0 +1,8 @@
+﻿################################################################################
+# Este arquivo .gitignore foi criado automaticamente pelo Microsoft(R) Visual Studio.
+################################################################################
+
+
+/src/Backend/.vs
+/src/Backend/BandMananger/bin/Debug/net10.0
+/src/Backend/BandMananger/obj
