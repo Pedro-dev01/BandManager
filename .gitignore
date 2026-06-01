@@ -6,3 +6,6 @@
 /src/Backend/.vs
 /src/Backend/BandMananger/bin/Debug/net10.0
 /src/Backend/BandMananger/obj
+/src/WhatsappBot/node_modules
+/src/FrontEnd/package-lock.json
+/src/WhatsappBot/package-lock.json

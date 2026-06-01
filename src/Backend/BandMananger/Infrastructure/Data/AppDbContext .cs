@@ -15,6 +15,8 @@ namespace BandMananger.Infrastructure.Data
 
         public DbSet<Event> Events { get; set; }
 
+        public DbSet<EventRecurrence> EventRecurrences { get; set; }
+
         public DbSet<Repertoire> Repertoires { get; set; }
 
         public DbSet<Presence> Presence { get; set; }
@@ -42,6 +44,12 @@ namespace BandMananger.Infrastructure.Data
                 .HasOne(a => a.Member)
                 .WithMany()
                 .HasForeignKey(a => a.MemberId);
+
+            modelBuilder.Entity<Event>()
+                .HasOne(e => e.Recurrence)
+                .WithMany(r => r.Events)
+                .HasForeignKey(e => e.RecurrenceId)
+                .OnDelete(DeleteBehavior.SetNull);
         }
     }
 }

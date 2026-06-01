@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
-import { Plus, Music2, GripVertical, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Plus, Music2, GripVertical, X, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,8 +12,10 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-import { useDB, type Repertoire, type RepertoireItem } from "@/lib/store";
+import { useDB, type RepertoireItem } from "@/lib/store";
 import { PageHeader } from "@/components/page-header";
+import { useRepertoirePage } from "@/hooks/use-repertoire-page";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/repertorios")({
   head: () => ({ meta: [{ title: "Repertórios — Louvor" }] }),
@@ -21,48 +23,75 @@ export const Route = createFileRoute("/repertorios")({
 });
 
 function RepertoriosPage() {
-  const { db, update } = useDB();
-  const [selectedEvent, setSelectedEvent] = useState<string>(db.events[0]?.id ?? "");
-  const [songToAdd, setSongToAdd] = useState<string>("");
+  const { db } = useDB();
+  const [selectedEvent, setSelectedEvent] = useState("");
+  const [songToAdd, setSongToAdd] = useState("");
+  const [localItems, setLocalItems] = useState<RepertoireItem[]>([]);
+  const [leaderDraft, setLeaderDraft] = useState<Record<number, string | undefined>>({});
 
-  const repertoire = useMemo<Repertoire>(
-    () =>
-      db.repertoires.find((r) => r.eventId === selectedEvent) ?? {
-        eventId: selectedEvent,
-        items: [],
-      },
-    [db.repertoires, selectedEvent],
-  );
+  const {
+    events,
+    songs,
+    items,
+    repertoireData,
+    isLoading,
+    isSaving,
+    error,
+    saveItems,
+  } = useRepertoirePage(selectedEvent || null);
 
-  function updateRep(items: RepertoireItem[]) {
-    const exists = db.repertoires.some((r) => r.eventId === selectedEvent);
-    const next = exists
-      ? db.repertoires.map((r) => (r.eventId === selectedEvent ? { ...r, items } : r))
-      : [...db.repertoires, { eventId: selectedEvent, items }];
-    update({ repertoires: next });
+  useEffect(() => {
+    if (!selectedEvent && events[0]?.id) setSelectedEvent(events[0].id);
+  }, [events, selectedEvent]);
+
+  useEffect(() => {
+    setLocalItems(items);
+    setLeaderDraft({});
+  }, [selectedEvent, repertoireData, items]);
+
+  useEffect(() => {
+    if (error instanceof Error) toast.error(error.message);
+  }, [error]);
+
+  const activeEventId = selectedEvent || events[0]?.id || "";
+  const event = events.find((e) => e.id === activeEventId);
+
+  async function persist(next: RepertoireItem[]) {
+    if (!activeEventId) return;
+    try {
+      const saved = await saveItems(activeEventId, next);
+      setLocalItems(saved);
+      setLeaderDraft({});
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao salvar repertório");
+    }
   }
 
   function addSong() {
     if (!songToAdd) return;
-    const song = db.songs.find((s) => s.id === songToAdd);
+    const song = songs.find((s) => s.id === songToAdd);
     if (!song) return;
-    updateRep([...repertoire.items, { songId: song.id, key: song.key }]);
+    void persist([...localItems, { songId: song.id, key: song.key }]);
     setSongToAdd("");
   }
 
   function removeItem(idx: number) {
-    updateRep(repertoire.items.filter((_, i) => i !== idx));
+    void persist(localItems.filter((_, i) => i !== idx));
   }
 
   function move(idx: number, dir: -1 | 1) {
-    const items = [...repertoire.items];
+    const next = [...localItems];
     const target = idx + dir;
-    if (target < 0 || target >= items.length) return;
-    [items[idx], items[target]] = [items[target], items[idx]];
-    updateRep(items);
+    if (target < 0 || target >= next.length) return;
+    [next[idx], next[target]] = [next[target], next[idx]];
+    void persist(next);
   }
 
-  const event = db.events.find((e) => e.id === selectedEvent);
+  function commitKey(idx: number, key: string) {
+    const next = [...localItems];
+    next[idx] = { ...next[idx], key };
+    void persist(next);
+  }
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-6">
@@ -71,22 +100,35 @@ function RepertoriosPage() {
         description="Monte a ordem das músicas para cada evento, com tom e líder."
       />
 
+      {isLoading && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Carregando dados da API…
+        </div>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
         <Card className="border-border/60 bg-card/70 shadow-card backdrop-blur">
           <CardHeader><CardTitle className="text-sm">Eventos</CardTitle></CardHeader>
           <CardContent className="flex flex-col gap-1 p-2">
-            {db.events.map((e) => (
+            {events.length === 0 && !isLoading && (
+              <p className="px-3 py-2 text-sm text-muted-foreground">
+                Nenhum evento no banco. Inicie a API com o seed de desenvolvimento.
+              </p>
+            )}
+            {events.map((e) => (
               <button
                 key={e.id}
+                type="button"
                 onClick={() => setSelectedEvent(e.id)}
                 className={`rounded-lg px-3 py-2 text-left text-sm transition ${
-                  selectedEvent === e.id
+                  activeEventId === e.id
                     ? "bg-gradient-gold text-primary-foreground shadow-glow"
                     : "hover:bg-secondary/60"
                 }`}
               >
                 <div className="font-medium truncate">{e.name}</div>
-                <div className={`text-xs ${selectedEvent === e.id ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+                <div className={`text-xs ${activeEventId === e.id ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
                   {new Date(e.date + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} • {e.time}
                 </div>
               </button>
@@ -104,35 +146,44 @@ function RepertoriosPage() {
             {event && (
               <>
                 <div className="flex flex-col gap-2 sm:flex-row">
-                  <Select value={songToAdd} onValueChange={setSongToAdd}>
+                  <Select value={songToAdd || undefined} onValueChange={setSongToAdd}>
                     <SelectTrigger className="flex-1"><SelectValue placeholder="Escolher música..." /></SelectTrigger>
                     <SelectContent>
-                      {db.songs
-                        .filter((s) => !repertoire.items.some((i) => i.songId === s.id))
+                      {songs
+                        .filter((s) => !localItems.some((i) => i.songId === s.id))
                         .map((s) => (
                           <SelectItem key={s.id} value={s.id}>{s.name} — {s.artist}</SelectItem>
                         ))}
                     </SelectContent>
                   </Select>
-                  <Button onClick={addSong} className="bg-gradient-gold text-primary-foreground shadow-glow hover:opacity-90">
+                  <Button
+                    onClick={addSong}
+                    disabled={isSaving}
+                    className="bg-gradient-gold text-primary-foreground shadow-glow hover:opacity-90"
+                  >
                     <Plus className="mr-1 h-4 w-4" /> Adicionar
                   </Button>
                 </div>
 
+                <p className="text-xs text-muted-foreground">
+                  Líder é exibido apenas nesta sessão (ainda não persistido na API).
+                </p>
+
                 <div className="flex flex-col gap-2">
-                  {repertoire.items.length === 0 && (
+                  {localItems.length === 0 && !isLoading && (
                     <p className="rounded-lg border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground">
                       Nenhuma música no repertório. Adicione a primeira acima.
                     </p>
                   )}
-                  {repertoire.items.map((item, idx) => {
-                    const song = db.songs.find((s) => s.id === item.songId);
+                  {localItems.map((item, idx) => {
+                    const song = songs.find((s) => s.id === item.songId);
+                    const leaderId = leaderDraft[idx] ?? item.leaderId ?? "";
                     return (
                       <div key={`${item.songId}-${idx}`} className="flex items-center gap-3 rounded-xl border border-border/60 bg-secondary/40 p-3">
                         <div className="flex flex-col">
-                          <button onClick={() => move(idx, -1)} className="text-muted-foreground hover:text-foreground">▲</button>
+                          <button type="button" onClick={() => move(idx, -1)} className="text-muted-foreground hover:text-foreground">▲</button>
                           <GripVertical className="h-3 w-3 text-muted-foreground" />
-                          <button onClick={() => move(idx, 1)} className="text-muted-foreground hover:text-foreground">▼</button>
+                          <button type="button" onClick={() => move(idx, 1)} className="text-muted-foreground hover:text-foreground">▼</button>
                         </div>
                         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/60 text-primary">
                           <Music2 className="h-4 w-4" />
@@ -142,21 +193,18 @@ function RepertoriosPage() {
                           <p className="truncate text-xs text-muted-foreground">{song?.artist}</p>
                         </div>
                         <Input
-                          value={item.key}
-                          onChange={(e) => {
-                            const items = [...repertoire.items];
-                            items[idx] = { ...item, key: e.target.value };
-                            updateRep(items);
+                          defaultValue={item.key}
+                          key={`${item.songId}-${item.key}-${idx}`}
+                          onBlur={(e) => {
+                            if (e.target.value !== item.key) commitKey(idx, e.target.value);
                           }}
                           className="w-16 text-center font-mono"
                         />
                         <Select
-                          value={item.leaderId ?? ""}
-                          onValueChange={(v) => {
-                            const items = [...repertoire.items];
-                            items[idx] = { ...item, leaderId: v };
-                            updateRep(items);
-                          }}
+                          value={leaderId || undefined}
+                          onValueChange={(v) =>
+                            setLeaderDraft((prev) => ({ ...prev, [idx]: v }))
+                          }
                         >
                           <SelectTrigger className="w-40"><SelectValue placeholder="Líder" /></SelectTrigger>
                           <SelectContent>
@@ -165,7 +213,13 @@ function RepertoriosPage() {
                             ))}
                           </SelectContent>
                         </Select>
-                        <Button size="icon" variant="ghost" onClick={() => removeItem(idx)} className="text-destructive">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => removeItem(idx)}
+                          disabled={isSaving}
+                          className="text-destructive"
+                        >
                           <X className="h-4 w-4" />
                         </Button>
                       </div>
@@ -173,9 +227,14 @@ function RepertoriosPage() {
                   })}
                 </div>
 
-                {repertoire.items.length > 0 && (
+                {localItems.length > 0 && (
                   <div className="flex gap-2 text-xs text-muted-foreground">
-                    <Badge variant="outline">{repertoire.items.length} música(s)</Badge>
+                    <Badge variant="outline">{localItems.length} música(s)</Badge>
+                    {isSaving && (
+                      <span className="flex items-center gap-1">
+                        <Loader2 className="h-3 w-3 animate-spin" /> Salvando…
+                      </span>
+                    )}
                   </div>
                 )}
               </>

@@ -17,6 +17,10 @@ namespace BandMananger.Models
 
         public string? Notes { get; set; }
 
+        public Guid? RecurrenceId { get; set; }
+
+        public EventRecurrence? Recurrence { get; set; }
+
         public ICollection<Repertoire> Repertoires { get; set; } = new List<Repertoire>();
 
         public ICollection<Presence> Presences { get; set; } = new List<Presence>();

@@ -37,6 +37,9 @@ namespace BandMananger.Migrations
                     b.Property<string>("Notes")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<Guid?>("RecurrenceId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -46,7 +49,36 @@ namespace BandMananger.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("RecurrenceId");
+
                     b.ToTable("Events");
+                });
+
+            modelBuilder.Entity("BandMananger.Models.EventRecurrence", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("DayOfWeek")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("EndDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("StartDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<TimeOnly>("Time")
+                        .HasColumnType("time");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("EventRecurrences");
                 });
 
             modelBuilder.Entity("BandMananger.Models.Member", b =>
@@ -223,9 +255,24 @@ namespace BandMananger.Migrations
 
             modelBuilder.Entity("BandMananger.Models.Event", b =>
                 {
+                    b.HasOne("BandMananger.Models.EventRecurrence", "Recurrence")
+                        .WithMany("Events")
+                        .HasForeignKey("RecurrenceId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Recurrence");
+                });
+
+            modelBuilder.Entity("BandMananger.Models.Event", b =>
+                {
                     b.Navigation("Presences");
 
                     b.Navigation("Repertoires");
+                });
+
+            modelBuilder.Entity("BandMananger.Models.EventRecurrence", b =>
+                {
+                    b.Navigation("Events");
                 });
 #pragma warning restore 612, 618
         }

@@ -25,7 +25,9 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-import { useDB, uid, type BandEvent, type EventType, type Recurrence } from "@/lib/store";
+import { toast } from "sonner";
+import { useAgendaEvents } from "@/hooks/use-agenda-events";
+import type { BandEvent, EventType, Recurrence } from "@/lib/store";
 
 export const Route = createFileRoute("/agenda")({
   head: () => ({ meta: [{ title: "Agenda — Louvor" }] }),
@@ -55,7 +57,6 @@ const recurrenceLabels: Record<Recurrence, string> = {
 const typeAccent: Record<EventType, string> = {
   Culto: "bg-primary",
   Ensaio: "bg-chart-2",
-  Vigília: "bg-chart-4",
   "Evento especial": "bg-chart-3",
 };
 
@@ -80,7 +81,7 @@ function startOfWeek(d: Date) {
 }
 
 function AgendaPage() {
-  const { db, update } = useDB();
+  const { events, isLoading, isSaving, saveEvent, removeEvent } = useAgendaEvents();
   const [selected, setSelected] = useState(() => toISO(new Date()));
   const [weekStart, setWeekStart] = useState<Date | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -111,7 +112,7 @@ function AgendaPage() {
   }, [weekStart]);
 
   const grouped = useMemo(() => {
-    const sorted = [...db.events].sort(
+    const sorted = [...events].sort(
       (a, b) => (a.date + a.time).localeCompare(b.date + b.time),
     );
     const map = new Map<string, BandEvent[]>();
@@ -120,7 +121,7 @@ function AgendaPage() {
       map.get(e.date)!.push(e);
     });
     return Array.from(map.entries());
-  }, [db.events]);
+  }, [events]);
 
   function openNew() {
     setEditing({ ...empty, date: selected });
@@ -130,18 +131,22 @@ function AgendaPage() {
     setEditing(e);
     setFormOpen(true);
   }
-  function save() {
+  async function save() {
     if (!editing.name.trim()) return;
-    const exists = db.events.some((e) => e.id === editing.id);
-    const next = exists
-      ? db.events.map((e) => (e.id === editing.id ? editing : e))
-      : [...db.events, { ...editing, id: uid() }];
-    update({ events: next });
-    setFormOpen(false);
+    try {
+      await saveEvent(editing);
+      setFormOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao salvar evento");
+    }
   }
-  function remove(id: string) {
-    update({ events: db.events.filter((e) => e.id !== id) });
-    setFormOpen(false);
+  async function remove(id: string) {
+    try {
+      await removeEvent(id);
+      setFormOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao excluir evento");
+    }
   }
 
   function shiftWeek(delta: number) {
@@ -179,7 +184,7 @@ function AgendaPage() {
             const iso = toISO(d);
             const isSelected = iso === selected;
             const isToday = iso === todayISO;
-            const hasEvents = db.events.some((e) => e.date === iso);
+            const hasEvents = events.some((e) => e.date === iso);
             return (
               <button
                 key={iso}
@@ -210,7 +215,10 @@ function AgendaPage() {
 
       {/* Agenda list grouped by date */}
       <div ref={listRef} className="flex-1 overflow-y-auto px-4 pb-32 pt-4">
-        {grouped.length === 0 && (
+        {isLoading && (
+          <p className="mt-12 text-center text-sm text-muted-foreground">Carregando eventos…</p>
+        )}
+        {!isLoading && grouped.length === 0 && (
           <p className="mt-12 text-center text-sm text-muted-foreground">
             Nenhum evento ainda. Toque em + para criar.
           </p>
@@ -242,6 +250,7 @@ function AgendaPage() {
           onChange={setEditing}
           onClose={() => setFormOpen(false)}
           onSave={save}
+          isSaving={isSaving}
           onDelete={editing.id ? () => remove(editing.id) : undefined}
         />
       )}
@@ -315,12 +324,14 @@ function EventForm({
   onChange,
   onClose,
   onSave,
+  isSaving,
   onDelete,
 }: {
   value: BandEvent;
   onChange: (v: BandEvent) => void;
   onClose: () => void;
   onSave: () => void;
+  isSaving?: boolean;
   onDelete?: () => void;
 }) {
   const [recurOpen, setRecurOpen] = useState(false);
@@ -337,8 +348,9 @@ function EventForm({
         </h2>
         <button
           onClick={onSave}
+          disabled={isSaving}
           aria-label="Salvar"
-          className="rounded-full p-2 text-primary hover:bg-primary/15"
+          className="rounded-full p-2 text-primary hover:bg-primary/15 disabled:opacity-50"
         >
           <Check className="h-5 w-5" />
         </button>
@@ -368,7 +380,6 @@ function EventForm({
             <SelectContent>
               <SelectItem value="Culto">Culto</SelectItem>
               <SelectItem value="Ensaio">Ensaio</SelectItem>
-              <SelectItem value="Vigília">Vigília</SelectItem>
               <SelectItem value="Evento especial">Evento especial</SelectItem>
             </SelectContent>
           </Select>

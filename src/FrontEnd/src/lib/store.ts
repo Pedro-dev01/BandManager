@@ -25,7 +25,7 @@ export type Song = {
   notes?: string;
 };
 
-export type EventType = "Culto" | "Ensaio" | "Vigília" | "Evento especial";
+export type EventType = "Culto" | "Ensaio" | "Evento especial";
 export type Recurrence =
   | "none"
   | "daily"
@@ -90,7 +90,7 @@ const seed: DB = {
   events: [
     { id: "e1", name: "Culto Dominical", date: nextDateISO(0, 0), time: "19:00", location: "Templo Principal", type: "Culto" },
     { id: "e2", name: "Ensaio Geral", date: nextDateISO(0, -2), time: "20:00", location: "Sala de Música", type: "Ensaio" },
-    { id: "e3", name: "Vigília de Oração", date: nextDateISO(0, 5), time: "22:00", location: "Templo Principal", type: "Vigília" },
+    { id: "e3", name: "Vigília de Oração", date: nextDateISO(0, 5), time: "22:00", location: "Templo Principal", type: "Evento especial" },
   ],
   repertoires: [
     { eventId: "e1", items: [
