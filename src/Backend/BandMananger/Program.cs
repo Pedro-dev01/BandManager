@@ -21,6 +21,8 @@ builder.Services.AddScoped<IRepertoireRepository, RepertoireRepository>();
 builder.Services.AddScoped<IRepertoireService, RepertoireService>();
 builder.Services.AddScoped<IEventRepository, EventRepository>();
 builder.Services.AddScoped<IEventService, EventService>();
+builder.Services.AddScoped<ISongRepository, SongRepository>();
+builder.Services.AddScoped<IWhatsappRepertoireService, WhatsappRepertoireService>();
 
 builder.Services.AddCors(options =>
 {
@@ -47,7 +49,10 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors("Frontend");
 
-app.UseHttpsRedirection();
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseAuthorization();
 

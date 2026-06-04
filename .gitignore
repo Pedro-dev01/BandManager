@@ -7,5 +7,9 @@
 /src/Backend/BandMananger/bin/Debug/net10.0
 /src/Backend/BandMananger/obj
 /src/WhatsappBot/node_modules
+/src/WhatsappBot/auth
+/src/WhatsappBot/dist
+/src/WhatsappBot/.env
 /src/FrontEnd/package-lock.json
 /src/WhatsappBot/package-lock.json
+/src/Backend/BandMananger/bin/verify-build

@@ -1,3 +1,4 @@
+using BandMananger.Enums;
 using BandMananger.Infrastructure.Data;
 using BandMananger.Models;
 using Microsoft.EntityFrameworkCore;
@@ -17,6 +18,21 @@ public class EventRepository(AppDbContext db) : IEventRepository
         await db.Events
             .Include(e => e.Recurrence)
             .FirstOrDefaultAsync(e => e.Id == id, cancellationToken);
+
+    public async Task<Event?> GetByTypeAndDateAsync(
+        EventType type,
+        DateOnly date,
+        CancellationToken cancellationToken = default)
+    {
+        var start = date.ToDateTime(TimeOnly.MinValue);
+        var end = start.AddDays(1);
+
+        return await db.Events
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                e => e.Type == type && e.EventDate >= start && e.EventDate < end,
+                cancellationToken);
+    }
 
     public async Task AddAsync(Event entity, CancellationToken cancellationToken = default)
     {
