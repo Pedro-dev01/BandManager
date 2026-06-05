@@ -61,10 +61,25 @@ const typeAccent: Record<EventType, string> = {
 };
 
 const weekdayShort = ["D", "S", "T", "Q", "Q", "S", "S"];
+const weekdayFullPt = [
+  "Domingo",
+  "Segunda-feira",
+  "Terça-feira",
+  "Quarta-feira",
+  "Quinta-feira",
+  "Sexta-feira",
+  "Sábado",
+];
 const monthNamesPt = [
   "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
   "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro",
 ];
+const monthShortPt = [
+  "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
+  "Jul", "Ago", "Set", "Out", "Nov", "Dez",
+];
+
+const MAX_VISIBLE_EVENTS = 3;
 
 function toISO(d: Date) {
   const y = d.getFullYear();
@@ -80,10 +95,32 @@ function startOfWeek(d: Date) {
   return r;
 }
 
+function endOfWeek(d: Date) {
+  const r = new Date(d);
+  r.setHours(0, 0, 0, 0);
+  r.setDate(r.getDate() + (6 - r.getDay()));
+  return r;
+}
+
+function getMonthCalendarDays(viewMonth: Date): Date[] {
+  const first = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 1);
+  const last = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 0);
+  const start = startOfWeek(first);
+  const end = endOfWeek(last);
+  const days: Date[] = [];
+  const cur = new Date(start);
+  while (cur <= end) {
+    days.push(new Date(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return days;
+}
+
 function AgendaPage() {
   const { events, isLoading, isSaving, saveEvent, removeEvent } = useAgendaEvents();
   const [selected, setSelected] = useState(() => toISO(new Date()));
   const [weekStart, setWeekStart] = useState<Date | null>(null);
+  const [viewMonth, setViewMonth] = useState<Date | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<BandEvent>(empty);
   const listRef = useRef<HTMLDivElement>(null);
@@ -92,6 +129,7 @@ function AgendaPage() {
   useEffect(() => {
     const today = new Date();
     setWeekStart(startOfWeek(today));
+    setViewMonth(new Date(today.getFullYear(), today.getMonth(), 1));
     setSelected(toISO(today));
   }, []);
 
@@ -111,7 +149,7 @@ function AgendaPage() {
     return monthNamesPt[mid.getMonth()];
   }, [weekStart]);
 
-  const grouped = useMemo(() => {
+  const eventsByDate = useMemo(() => {
     const sorted = [...events].sort(
       (a, b) => (a.date + a.time).localeCompare(b.date + b.time),
     );
@@ -120,11 +158,28 @@ function AgendaPage() {
       if (!map.has(e.date)) map.set(e.date, []);
       map.get(e.date)!.push(e);
     });
-    return Array.from(map.entries());
+    return map;
   }, [events]);
 
-  function openNew() {
-    setEditing({ ...empty, date: selected });
+  const grouped = useMemo(
+    () => Array.from(eventsByDate.entries()),
+    [eventsByDate],
+  );
+
+  const monthCalendarDays = useMemo(() => {
+    if (!viewMonth) return [];
+    return getMonthCalendarDays(viewMonth);
+  }, [viewMonth]);
+
+  const desktopMonthTitle = useMemo(() => {
+    if (!viewMonth) return "";
+    return `${monthNamesPt[viewMonth.getMonth()]} ${viewMonth.getFullYear()}`;
+  }, [viewMonth]);
+
+  function openNew(date?: string) {
+    const d = date ?? selected;
+    setSelected(d);
+    setEditing({ ...empty, date: d });
     setFormOpen(true);
   }
   function openEdit(e: BandEvent) {
@@ -156,94 +211,141 @@ function AgendaPage() {
     setWeekStart(n);
   }
 
+  function shiftMonth(delta: number) {
+    if (!viewMonth) return;
+    setViewMonth(
+      new Date(viewMonth.getFullYear(), viewMonth.getMonth() + delta, 1),
+    );
+  }
+
+  function goToToday() {
+    const today = new Date();
+    setViewMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+    setSelected(toISO(today));
+  }
+
   const todayISO = weekStart ? toISO(new Date()) : "";
 
   return (
-    <div className="-mx-4 -mt-4 flex h-[calc(100vh-2rem)] flex-col bg-background sm:mx-0 sm:mt-0 sm:h-auto sm:min-h-[80vh] sm:rounded-2xl sm:border sm:border-border/60">
-      {/* Top header: month + week strip */}
-      <div className="sticky top-0 z-20 border-b border-border/60 bg-background/95 px-4 pb-3 pt-3 backdrop-blur">
-        <div className="mb-3 flex items-center justify-between">
-          <h1 className="font-display text-2xl font-semibold capitalize">{monthLabel || "Agenda"}</h1>
-          <div className="flex gap-1">
-            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => shiftWeek(-1)}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => shiftWeek(1)}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+    <div className="-mx-4 -mt-4 flex h-[calc(100vh-2rem)] flex-col bg-background md:mx-0 md:mt-0 md:h-auto md:min-h-[80vh] md:rounded-2xl md:border md:border-border/60">
+      {/* Mobile: week strip + event list */}
+      <div className="flex min-h-0 flex-1 flex-col md:hidden">
+        <div className="sticky top-0 z-20 border-b border-border/60 bg-background/95 px-4 pb-3 pt-3 backdrop-blur">
+          <div className="mb-3 flex items-center justify-between">
+            <h1 className="font-display text-2xl font-semibold capitalize">
+              {monthLabel || "Agenda"}
+            </h1>
+            <div className="flex gap-1">
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8"
+                onClick={() => shiftWeek(-1)}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8"
+                onClick={() => shiftWeek(1)}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1">
+            {weekdayShort.map((d, i) => (
+              <div
+                key={i}
+                className="text-center text-[11px] font-medium uppercase tracking-wider text-muted-foreground"
+              >
+                {d}
+              </div>
+            ))}
+            {weekDays.map((d) => {
+              const iso = toISO(d);
+              const isSelected = iso === selected;
+              const isToday = iso === todayISO;
+              const hasEvents = events.some((e) => e.date === iso);
+              return (
+                <button
+                  key={iso}
+                  onClick={() => setSelected(iso)}
+                  className="flex flex-col items-center justify-center pt-1"
+                >
+                  <span
+                    className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-medium transition ${
+                      isSelected
+                        ? "bg-gradient-gold text-primary-foreground shadow-glow"
+                        : isToday
+                          ? "bg-primary/15 text-primary"
+                          : "text-foreground"
+                    }`}
+                  >
+                    {d.getDate()}
+                  </span>
+                  <span
+                    className={`mt-1 h-1 w-1 rounded-full ${
+                      hasEvents ? "bg-primary" : "bg-transparent"
+                    }`}
+                  />
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        <div className="grid grid-cols-7 gap-1">
-          {weekdayShort.map((d, i) => (
-            <div key={i} className="text-center text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-              {d}
-            </div>
+        <div ref={listRef} className="flex-1 overflow-y-auto px-4 pb-32 pt-4">
+          {isLoading && (
+            <p className="mt-12 text-center text-sm text-muted-foreground">
+              Carregando eventos…
+            </p>
+          )}
+          {!isLoading && grouped.length === 0 && (
+            <p className="mt-12 text-center text-sm text-muted-foreground">
+              Nenhum evento ainda. Toque em + para criar.
+            </p>
+          )}
+          {grouped.map(([date, evts]) => (
+            <DaySection
+              key={date}
+              date={date}
+              events={evts}
+              todayISO={todayISO}
+              onOpen={openEdit}
+            />
           ))}
-          {weekDays.map((d) => {
-            const iso = toISO(d);
-            const isSelected = iso === selected;
-            const isToday = iso === todayISO;
-            const hasEvents = events.some((e) => e.date === iso);
-            return (
-              <button
-                key={iso}
-                onClick={() => setSelected(iso)}
-                className="flex flex-col items-center justify-center pt-1"
-              >
-                <span
-                  className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-medium transition ${
-                    isSelected
-                      ? "bg-gradient-gold text-primary-foreground shadow-glow"
-                      : isToday
-                      ? "bg-primary/15 text-primary"
-                      : "text-foreground"
-                  }`}
-                >
-                  {d.getDate()}
-                </span>
-                <span
-                  className={`mt-1 h-1 w-1 rounded-full ${
-                    hasEvents ? "bg-primary" : "bg-transparent"
-                  }`}
-                />
-              </button>
-            );
-          })}
         </div>
+
+        <button
+          onClick={() => openNew()}
+          aria-label="Novo evento"
+          className="fixed bottom-6 right-6 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-gold text-primary-foreground shadow-glow transition active:scale-95"
+        >
+          <Plus className="h-6 w-6" />
+        </button>
       </div>
 
-      {/* Agenda list grouped by date */}
-      <div ref={listRef} className="flex-1 overflow-y-auto px-4 pb-32 pt-4">
-        {isLoading && (
-          <p className="mt-12 text-center text-sm text-muted-foreground">Carregando eventos…</p>
-        )}
-        {!isLoading && grouped.length === 0 && (
-          <p className="mt-12 text-center text-sm text-muted-foreground">
-            Nenhum evento ainda. Toque em + para criar.
-          </p>
-        )}
-        {grouped.map(([date, evts]) => (
-          <DaySection
-            key={date}
-            date={date}
-            events={evts}
-            todayISO={todayISO}
-            onOpen={openEdit}
-          />
-        ))}
-      </div>
+      {/* Desktop: month grid (Teams-style) */}
+      {viewMonth && (
+        <AgendaMonthGrid
+          viewMonth={viewMonth}
+          monthTitle={desktopMonthTitle}
+          days={monthCalendarDays}
+          eventsByDate={eventsByDate}
+          todayISO={todayISO}
+          isLoading={isLoading}
+          onPrevMonth={() => shiftMonth(-1)}
+          onNextMonth={() => shiftMonth(1)}
+          onToday={goToToday}
+          onNew={() => openNew()}
+          onNewForDate={openNew}
+          onOpenEdit={openEdit}
+        />
+      )}
 
-      {/* Floating + button */}
-      <button
-        onClick={openNew}
-        aria-label="Novo evento"
-        className="fixed bottom-6 right-6 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-gold text-primary-foreground shadow-glow transition active:scale-95 sm:absolute"
-      >
-        <Plus className="h-6 w-6" />
-      </button>
-
-      {/* Full-screen new/edit event */}
       {formOpen && (
         <EventForm
           value={editing}
@@ -254,6 +356,150 @@ function AgendaPage() {
           onDelete={editing.id ? () => remove(editing.id) : undefined}
         />
       )}
+    </div>
+  );
+}
+
+function AgendaMonthGrid({
+  viewMonth,
+  monthTitle,
+  days,
+  eventsByDate,
+  todayISO,
+  isLoading,
+  onPrevMonth,
+  onNextMonth,
+  onToday,
+  onNew,
+  onNewForDate,
+  onOpenEdit,
+}: {
+  viewMonth: Date;
+  monthTitle: string;
+  days: Date[];
+  eventsByDate: Map<string, BandEvent[]>;
+  todayISO: string;
+  isLoading: boolean;
+  onPrevMonth: () => void;
+  onNextMonth: () => void;
+  onToday: () => void;
+  onNew: () => void;
+  onNewForDate: (date: string) => void;
+  onOpenEdit: (e: BandEvent) => void;
+}) {
+  const viewMonthIndex = viewMonth.getMonth();
+
+  return (
+    <div className="hidden min-h-0 flex-1 flex-col md:flex">
+      <div className="flex shrink-0 items-center gap-2 border-b border-border/60 px-4 py-3">
+        <Button variant="outline" size="sm" onClick={onToday}>
+          Hoje
+        </Button>
+        <div className="flex gap-0.5">
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={onPrevMonth}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={onNextMonth}>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+        <h1 className="font-display text-lg font-semibold capitalize">{monthTitle}</h1>
+        <div className="flex-1" />
+        <Button
+          size="sm"
+          className="bg-gradient-gold text-primary-foreground shadow-glow hover:opacity-90"
+          onClick={onNew}
+        >
+          <Plus className="mr-1.5 h-4 w-4" />
+          Novo
+        </Button>
+      </div>
+
+      <div className="grid shrink-0 grid-cols-7 border-b border-border/60">
+        {weekdayFullPt.map((name) => (
+          <div
+            key={name}
+            className="border-r border-border/60 px-2 py-2 text-center text-xs font-medium text-muted-foreground last:border-r-0"
+          >
+            {name}
+          </div>
+        ))}
+      </div>
+
+      <div className="grid min-h-0 flex-1 auto-rows-fr grid-cols-7 border-l border-border/60">
+        {isLoading && (
+          <div className="col-span-7 flex items-center justify-center p-12 text-sm text-muted-foreground">
+            Carregando eventos…
+          </div>
+        )}
+        {!isLoading &&
+          days.map((d) => {
+            const iso = toISO(d);
+            const isToday = iso === todayISO;
+            const isOutside = d.getMonth() !== viewMonthIndex;
+            const dayEvents = eventsByDate.get(iso) ?? [];
+            const visible = dayEvents.slice(0, MAX_VISIBLE_EVENTS);
+            const overflow = dayEvents.length - visible.length;
+
+            return (
+              <button
+                key={iso}
+                type="button"
+                onClick={() => onNewForDate(iso)}
+                className={`flex min-h-[100px] flex-col border-b border-r border-border/60 p-2 text-left transition hover:bg-secondary/20 ${
+                  isToday ? "ring-2 ring-inset ring-primary/50" : ""
+                }`}
+              >
+                <span
+                  className={`mb-1 inline-flex items-center gap-1 text-sm font-medium ${
+                    isOutside ? "text-muted-foreground" : "text-foreground"
+                  }`}
+                >
+                  {isOutside && (
+                    <span className="text-xs">{monthShortPt[d.getMonth()]}</span>
+                  )}
+                  <span
+                    className={`inline-flex h-7 min-w-7 items-center justify-center rounded-full px-1 ${
+                      isToday ? "bg-primary text-primary-foreground" : ""
+                    }`}
+                  >
+                    {d.getDate()}
+                  </span>
+                </span>
+                <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-hidden">
+                  {visible.map((e) => (
+                    <div
+                      key={e.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        onOpenEdit(e);
+                      }}
+                      onKeyDown={(ev) => {
+                        if (ev.key === "Enter" || ev.key === " ") {
+                          ev.preventDefault();
+                          ev.stopPropagation();
+                          onOpenEdit(e);
+                        }
+                      }}
+                      className="flex min-w-0 cursor-pointer items-center gap-1.5 rounded bg-secondary/50 px-1.5 py-0.5 text-left text-xs hover:bg-secondary/70"
+                    >
+                      <span
+                        className={`w-0.5 shrink-0 self-stretch rounded-full ${typeAccent[e.type]}`}
+                      />
+                      <span className="shrink-0 text-muted-foreground">{e.time}</span>
+                      <span className="truncate font-medium">{e.name}</span>
+                    </div>
+                  ))}
+                  {overflow > 0 && (
+                    <span className="px-1 text-xs text-primary">+{overflow} mais</span>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+      </div>
     </div>
   );
 }
@@ -290,15 +536,15 @@ function DaySection({
           <button
             key={e.id}
             onClick={() => onOpen(e)}
-            className="flex gap-3 rounded-xl bg-secondary/30 p-3 text-left transition hover:bg-secondary/50"
+            className="flex gap-3 py-3 text-left transition hover:bg-secondary/50"
           >
             <div className="flex w-14 shrink-0 flex-col">
-              <span className="font-semibold">{e.time}</span>
+              <p className="text-sm font-small">{e.time}</p>
               <span className="text-xs text-muted-foreground">{e.type}</span>
             </div>
-            <div className={`w-1 shrink-0 rounded-full ${typeAccent[e.type]}`} />
+            <div className={`w-1.5 shrink-0 rounded-full bg-primary`} />
             <div className="min-w-0 flex-1">
-              <p className="truncate font-medium">{e.name}</p>
+              <p className="truncate font-small">{e.name}</p>
               {e.location && (
                 <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground">
                   <MapPin className="h-3 w-3 shrink-0" /> {e.location}
